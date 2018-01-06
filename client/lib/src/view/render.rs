@@ -4,17 +4,27 @@ use cgmath;
 use gl;
 use time;
 use yaglw;
+use glium::{self, Frame, Surface};
+use glium::index::{NoIndices, PrimitiveType, VertexBuffer};
+use glium::uniforms::{Uniforms, EmptyUniforms, UniformsStorage, AsUniformValue};
 
 use view;
 use view::camera::{set_camera};
 use view::light::{set_sun, set_ambient_light};
 
-fn set_eye_position(shader: &mut yaglw::shader::Shader, camera: &view::camera::T) {
-  unsafe {
-    let uniform = shader.get_uniform_location("eye_position");
-    let ptr = &camera.position as *const _ as *const _;
-    gl::Uniform3fv(uniform, 1, ptr);
-  }
+fn set_eye_position<'n, T: AsUniformValue, R: Uniforms>(
+  uniforms: UniformsStorage<'n, T, R>,
+  camera: &view::camera::T,
+) -> UniformsStorage<'n, [f32; 3], UniformsStorage<'n, T, R>>{
+  uniforms.add("eye_position", [camera.position.x, camera.position.y, camera.position.z])
+}
+
+fn set_clip<'n, T: AsUniformValue, R: Uniforms>(
+  uniforms: UniformsStorage<'n, T, R>,
+  near: f32,
+  far: f32,
+) -> UniformsStorage<'n, f32, UniformsStorage<'n, f32, UniformsStrage<'n, T, R>>>{
+  uniforms.add("near_clip", near).add("far_clip", far)
 }
 
 fn set_clip(shader: &mut yaglw::shader::Shader, near: f32, far: f32) {
@@ -28,34 +38,26 @@ fn set_clip(shader: &mut yaglw::shader::Shader, near: f32, far: f32) {
 
 fn draw_backdrop(
   rndr: &mut view::T,
+  params: &glium::DrawParameters,
+  frame: &mut Frame,
 ) {
-  rndr.shaders.sky.shader.use_shader(&mut rndr.gl);
-
-  unsafe {
-    gl::BindVertexArray(rndr.empty_gl_array.gl_id);
-  }
-
-  set_sun(&mut rndr.shaders.sky.shader, &mut rndr.gl, &rndr.sun);
-  set_eye_position(&mut rndr.shaders.sky.shader, &rndr.camera);
-
-  unsafe {
-    let time_ms_uniform = rndr.shaders.sky.shader.get_uniform_location("time_ms");
-    gl::Uniform1f(time_ms_uniform, (time::precise_time_ns() / 1_000_000) as f32);
-
-    let projection_uniform = rndr.shaders.sky.shader.get_uniform_location("projection_matrix");
-    let projection_matrix = rndr.camera.projection_matrix();
-    let ptr = &projection_matrix as *const _ as *const _;
-    gl::UniformMatrix4fv(projection_uniform, 1, 0, ptr);
-
-    let window_size_uniform = rndr.shaders.sky.shader.get_uniform_location("window_size");
-    let window_size = cgmath::Vector2::new(rndr.window_size.x as f32, rndr.window_size.y as f32);
-    let ptr = &window_size as *const _ as *const _;
-    gl::Uniform2fv(window_size_uniform, 1, ptr);
-
-    gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
-
-    gl::Clear(gl::DEPTH_BUFFER_BIT);
-  }
+  let sun_direction = sun.direction();
+  let uniforms = uniform! {
+    time_ms: (time::precise_time_ns() / 1_000_000) as f32,
+    projection_matrix: rndr.camera.projection_matrix(),
+    window_size: [rndr.window_size.x as f32, rndr.window_size.y as f32],
+    sun_direction: [sun_direction.x, sun_direction.y, sun_direction.z],
+    sun_intensity: [1.0, 1.0, 1.0],
+  };
+  let uniforms = set_eye_position(uniforms, &rndr.camera);
+  frame.draw(
+    VertexBuffer::new(frame, &[]),
+    NoIndices(PrimitiveType::TriangleStrip),
+    &rndr.shaders.sky,
+    &EmptyUniforms,
+    params
+  );
+  frame.clear_depth(-1.0);
 }
 
 fn draw_grass_billboards(
@@ -66,10 +68,13 @@ fn draw_grass_billboards(
     let time_ms_uniform = rndr.shaders.grass_billboard.shader.get_uniform_location("time_ms");
     gl::Uniform1f(time_ms_uniform, (time::precise_time_ns() / 1_000_000) as f32);
   }
+  let uniforms = uniform! {
+    __dummy: 0
+  };
   set_ambient_light(&mut rndr.shaders.grass_billboard.shader, &mut rndr.gl, &rndr.sun);
   set_camera(&mut rndr.shaders.grass_billboard.shader, &mut rndr.gl, &rndr.camera);
-  set_clip(&mut rndr.shaders.grass_billboard.shader, rndr.near_clip, rndr.far_clip);
-  set_eye_position(&mut rndr.shaders.grass_billboard.shader, &rndr.camera);
+  let uniforms = set_clip(uniforms, rndr.near_clip, rndr.far_clip);
+  let uniforms = set_eye_position(uniforms, &rndr.camera);
   set_sun(&mut rndr.shaders.grass_billboard.shader, &mut rndr.gl, &rndr.sun);
   let alpha_threshold_uniform =
     rndr.shaders.grass_billboard.shader.get_uniform_location("alpha_threshold");
@@ -86,34 +91,59 @@ fn draw_grass_billboards(
 pub fn render(
   rndr: &mut view::T,
 ) {
-  rndr.gl.clear_buffer();
+  let frame = rndr.gl.draw();
+  frame.clear(None, Some((0., 0., 0., 0.)), false, None, None);
 
-  draw_backdrop(rndr);
+  let params = glium::DrawParameters {
+    depth: glium::Depth {
+      test: glium::DepthTest::IfLess,
+      write: true,
+      .. Default::default()
+    },
+    blend: glium::Blend {
+      color: glium::BlendingFunction::Addition {
+        source: glium::LinearBlendingFactor::SourceAlpha,
+        destination: glium::LinearBlendingFactor::OneMinusSourceAlpha,
+      },
+      .. Default::default()
+    },
+    line_width: Some(2.5),
+    backface_culling: glium::BackfaceCullingMode::CullCounterClockwise,
+    smooth: Some(glium::Smooth::Nicest),
+    .. Default::default()
+  };
 
-  unsafe {
-    gl::Enable(gl::CULL_FACE);
-  }
+  draw_backdrop(rndr, &params, frame);
 
   // draw the world
-  rndr.shaders.terrain_shader.shader.use_shader(&mut rndr.gl);
-  set_ambient_light(&mut rndr.shaders.terrain_shader.shader, &mut rndr.gl, &rndr.sun);
-  set_camera(&mut rndr.shaders.terrain_shader.shader, &mut rndr.gl, &rndr.camera);
-  set_clip(&mut rndr.shaders.terrain_shader.shader, rndr.near_clip, rndr.far_clip);
-  set_eye_position(&mut rndr.shaders.terrain_shader.shader, &rndr.camera);
-  set_sun(&mut rndr.shaders.terrain_shader.shader, &mut rndr.gl, &rndr.sun);
-  rndr.terrain_buffers.draw(&mut rndr.gl);
+  let terrain_uniforms = uniform! {
+    __dummy: 0
+  };
+  rndr.shaders.terrain_shader.shader.use_shader(&mut frame);
+  set_ambient_light(&mut rndr.shaders.terrain_shader.shader, &mut frame, &rndr.sun);
+  set_camera(&mut rndr.shaders.terrain_shader.shader, &mut frame, &rndr.camera);
+  let terrain_uniforms = set_clip(terrain_uniforms, rndr.near_clip, rndr.far_clip);
+  let terrain_uniforms = set_eye_position(terrain_uniforms, &rndr.camera);
+  set_sun(&mut rndr.shaders.terrain_shader.shader, &mut frame, &rndr.sun);
+  rndr.terrain_buffers.draw(&mut frame);
 
-  rndr.shaders.mob_shader.shader.use_shader(&mut rndr.gl);
-  set_camera(&mut rndr.shaders.mob_shader.shader, &mut rndr.gl, &rndr.camera);
-  set_clip(&mut rndr.shaders.mob_shader.shader, rndr.near_clip, rndr.far_clip);
-  rndr.mob_buffers.draw(&mut rndr.gl);
-  rndr.player_buffers.draw(&mut rndr.gl);
+  rndr.shaders.mob_shader.use_shader(&mut frame);
+  set_camera(&mut rndr.shaders.mob_shader, &mut frame, &rndr.camera);
+  let terrain_uniforms = set_clip(terrain_uniforms, rndr.near_clip, rndr.far_clip);
+  rndr.mob_buffers.draw(&mut frame);
+  rndr.player_buffers.draw(&mut frame);
 
   draw_grass_billboards(rndr);
 
   if rndr.show_hud {
-    rndr.shaders.hud_color_shader.shader.use_shader(&mut rndr.gl);
-    rndr.hud_triangles.bind(&mut rndr.gl);
-    rndr.hud_triangles.draw(&mut rndr.gl);
+    frame.draw(
+      rndr.hud_triangles,
+      NoIndices(PrimitiveType::TrianglesList),
+      &rndr.shaders.hud_color_shader,
+      &EmptyUniforms,
+      &params
+    );
   }
+
+  frame.finish().unwrap();
 }

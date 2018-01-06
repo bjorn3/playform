@@ -1,11 +1,10 @@
 //! This module defines the main function for the view/render/event thread.
 
 use cgmath::{Vector2};
-use gl;
 use stopwatch;
 use time;
-use yaglw::gl_context::GLContext;
-use glutin::{self, GlContext, Event, WindowEvent, KeyboardInput, VirtualKeyCode};
+use glium::glutin::{self, GlContext, Event, WindowEvent, KeyboardInput, VirtualKeyCode};
+use glium;
 
 use common::interval_timer::IntervalTimer;
 use common::protocol;
@@ -60,24 +59,21 @@ pub fn view_thread<Recv0, Recv1, UpdateServer>(
   let context = glutin::ContextBuilder::new()
     .with_gl(glutin::GlRequest::Specific(glutin::Api::OpenGl, (GL_MAJOR_VERSION, GL_MINOR_VERSION)))
     .with_gl_profile(glutin::GlProfile::Core);
-  let window = glutin::GlWindow::new(window, context, &event_loop).unwrap();
+  let display = glium::Display::new(window, context, &event_loop).unwrap();
+  let window = display.gl_window();
   //window.set_maximized(true);
   window.show();
   change_cursor_state(&*window, true);
 
   // Initialize OpenGL
-  unsafe { window.make_current().unwrap(); }
-  gl::load_with(|s| window.get_proc_address(s) as *const _ );
-  let gl = unsafe { GLContext::new() };
-
-  gl.print_stats();
+  
 
   let window_size = {
     let (w, h) = window.get_inner_size().expect("Window closed");
     Vector2::new(w as i32, h as i32)
   };
 
-  let mut view = view::new(gl, window_size);
+  let mut view = view::new(&display, window_size);
 
   make_hud(&mut view);
 

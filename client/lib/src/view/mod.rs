@@ -25,6 +25,7 @@ use yaglw::gl_context::GLContext;
 use yaglw;
 use yaglw::vertex_buffer::{GLArray, GLBuffer, GLType, DrawMode, VertexAttribData};
 use yaglw::texture::{TextureUnit};
+use glium::{self, Display};
 
 use common::id_allocator;
 use vertex::{ColoredVertex};
@@ -43,12 +44,10 @@ pub enum InputMode {
 /// The state associated with perceiving the world state.
 pub struct T<'a> {
   /// Current OpengL context.
-  pub gl: GLContext,
+  pub gl: &'a Display,
 
   #[allow(missing_docs)]
-  pub shaders: shaders::T<'a>,
-  #[allow(missing_docs)]
-  pub empty_gl_array: yaglw::vertex_buffer::ArrayHandle<'a>,
+  pub shaders: shaders::T,
   /// A texture unit for misc use.
   pub misc_texture_unit: TextureUnit,
   /// The OpenGL buffers for terrain render data
@@ -116,7 +115,7 @@ fn load_grass_texture<'a, 'b:'a>(
 
 #[allow(missing_docs)]
 pub fn new<'a>(
-  mut gl: GLContext,
+  mut gl: &Display,
   window_size: cgmath::Vector2<i32>,
 ) -> T<'a> {
   let mut texture_unit_alloc = id_allocator::new();
@@ -170,22 +169,6 @@ pub fn new<'a>(
   let misc_texture_unit = texture_unit_alloc.allocate();
 
   unsafe {
-    gl::FrontFace(gl::CCW);
-    gl::CullFace(gl::BACK);
-    gl::Enable(gl::CULL_FACE);
-
-    gl::Enable(gl::BLEND);
-    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-
-    gl::Enable(gl::LINE_SMOOTH);
-    gl::LineWidth(2.5);
-
-    gl::Enable(gl::DEPTH_TEST);
-    gl::DepthFunc(gl::LESS);
-    gl::ClearDepth(1.0);
-  }
-
-  unsafe {
     gl::ActiveTexture(misc_texture_unit.gl_id());
   }
 
@@ -206,8 +189,6 @@ pub fn new<'a>(
   let grass_buffers = grass_buffers::new(&mut gl, &shaders.grass_billboard.shader);
   let grass_texture = load_grass_texture(&mut gl).unwrap();
 
-  let empty_gl_array = yaglw::vertex_buffer::ArrayHandle::new(&gl);
-
   let near_clip = 0.1;
   let far_clip = 2048.0;
 
@@ -222,7 +203,6 @@ pub fn new<'a>(
     player_buffers: player_buffers,
     hud_triangles: hud_triangles,
 
-    empty_gl_array: empty_gl_array,
     misc_texture_unit: misc_texture_unit,
 
     window_size: window_size,

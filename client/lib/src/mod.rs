@@ -23,7 +23,8 @@ extern crate thread_scoped;
 extern crate time;
 extern crate voxel_data;
 extern crate yaglw;
-extern crate glutin;
+#[macro_use]
+extern crate glium;
 
 pub mod audio;
 pub mod audio_loader;
