@@ -26,7 +26,7 @@ portaudio      = { version = "0.7", optional = true}
 rand           = "*"
 thread-scoped  = "*"
 time           = "*"
-glutin         = "0.12"
+glium          = "0.19"
 
 [dependencies.image]
 version = "*"

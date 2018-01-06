@@ -1,7 +1,7 @@
 //! SDL input event processing code.
 
 use cgmath::{Vector2, Vector3};
-use glutin::{Event, DeviceEvent, WindowEvent, ElementState, VirtualKeyCode, MouseButton};
+use glium::glutin::{Event, DeviceEvent, WindowEvent, ElementState, VirtualKeyCode, MouseButton};
 use std::f32::consts::PI;
 use stopwatch;
 
