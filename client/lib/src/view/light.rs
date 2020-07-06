@@ -4,8 +4,7 @@ use cgmath::Vector3;
 use common::color::Color3;
 use gl;
 use std;
-use yaglw::gl_context::GLContext;
-use yaglw::shader::Shader;
+use glium::uniforms::{Uniforms, EmptyUniforms, UniformsStorage, AsUniformValue};
 
 #[derive(Debug, Clone)]
 /// Colored sun data structure.
@@ -53,24 +52,22 @@ impl Sun {
 }
 
 /// Sets the `sun` struct in some shader.
-pub fn set_sun(shader: &mut Shader, gl: &mut GLContext, sun: &Sun) {
-  let sun_direction_uniform = shader.get_uniform_location("sun.direction");
-  let sun_intensity_uniform = shader.get_uniform_location("sun.intensity");
-  shader.use_shader(gl);
-  unsafe {
-    let d = sun.direction();
-    gl::Uniform3f(sun_direction_uniform, d.x, d.y, d.z);
-    let i = sun.intensity();
-    gl::Uniform3f(sun_intensity_uniform, i.r, i.g, i.b);
-  }
+pub fn set_sun<'n, T: AsUniformValue, R: Uniforms>(
+  uniforms: UniformsStorage<'n, T, R>,
+  sun: &Sun,
+) -> UniformsStorage<'n, [f32; 3], UniformsStorage<'n, [f32; 3], UniformsStorage<'n, T, R>>>{
+  let d = sun.direction();
+  let i = sun.intensity();
+  uniforms
+    .set("sun.direction", [d.x, d.y, d.z])
+    .set("sun.intensity", [i.r, i.g, i.b])
 }
 
 /// Sets the `ambient_light` uniform in some shader.
-pub fn set_ambient_light(shader: &mut Shader, gl: &mut GLContext, sun: &Sun) {
-  let ambient_light_uniform = shader.get_uniform_location("ambient_light");
-  shader.use_shader(gl);
-  unsafe {
-    let a = sun.ambient_intensity();
-    gl::Uniform3f(ambient_light_uniform, a.r, a.g, a.b);
-  }
+pub fn set_ambient_light<'n, T: AsUniformValue, R: Uniforms>(
+  uniforms: UniformsStorage<'n, T, R>,
+  sun: &Sun,
+) -> UniformsStorage<'n, [f32; 3], UniformsStorage<'n, T, R>>{
+  let a = sun.ambient_intensity();
+  uniforms.set("ambient_light", [a.r, a.g, a.b])
 }

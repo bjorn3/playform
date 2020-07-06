@@ -9,7 +9,7 @@ use glium::index::{NoIndices, PrimitiveType, VertexBuffer};
 use glium::uniforms::{Uniforms, EmptyUniforms, UniformsStorage, AsUniformValue};
 
 use view;
-use view::camera::{set_camera};
+use view::camera::set_camera;
 use view::light::{set_sun, set_ambient_light};
 
 fn set_eye_position<'n, T: AsUniformValue, R: Uniforms>(
@@ -25,15 +25,6 @@ fn set_clip<'n, T: AsUniformValue, R: Uniforms>(
   far: f32,
 ) -> UniformsStorage<'n, f32, UniformsStorage<'n, f32, UniformsStrage<'n, T, R>>>{
   uniforms.add("near_clip", near).add("far_clip", far)
-}
-
-fn set_clip(shader: &mut yaglw::shader::Shader, near: f32, far: f32) {
-  unsafe {
-    let uniform = shader.get_uniform_location("near_clip");
-    gl::Uniform1f(uniform, near);
-    let uniform = shader.get_uniform_location("far_clip");
-    gl::Uniform1f(uniform, far);
-  }
 }
 
 fn draw_backdrop(
@@ -62,29 +53,26 @@ fn draw_backdrop(
 
 fn draw_grass_billboards(
   rndr: &mut view::T,
+  params: &glium::DrawParameters,
+  frame: &mut Frame,
 ) {
-  rndr.shaders.grass_billboard.shader.use_shader(&mut rndr.gl);
-  unsafe {
-    let time_ms_uniform = rndr.shaders.grass_billboard.shader.get_uniform_location("time_ms");
-    gl::Uniform1f(time_ms_uniform, (time::precise_time_ns() / 1_000_000) as f32);
-  }
   let uniforms = uniform! {
-    __dummy: 0
+    time_ms: (time::precise_time_ns() / 1_000_000) as f32,
+    alpha_threshold: 0.5,
+    //texture_in: rndr.grass_texture
   };
-  set_ambient_light(&mut rndr.shaders.grass_billboard.shader, &mut rndr.gl, &rndr.sun);
-  set_camera(&mut rndr.shaders.grass_billboard.shader, &mut rndr.gl, &rndr.camera);
+  let uniforms = set_ambient_light(uniforms, &rndr.sun);
+  let uniforms = set_camera(uniforms, &rndr.camera);
   let uniforms = set_clip(uniforms, rndr.near_clip, rndr.far_clip);
   let uniforms = set_eye_position(uniforms, &rndr.camera);
-  set_sun(&mut rndr.shaders.grass_billboard.shader, &mut rndr.gl, &rndr.sun);
-  let alpha_threshold_uniform =
-    rndr.shaders.grass_billboard.shader.get_uniform_location("alpha_threshold");
-  unsafe {
-    gl::Disable(gl::CULL_FACE);
-    gl::Uniform1f(alpha_threshold_uniform, 0.5);
-    gl::ActiveTexture(rndr.misc_texture_unit.gl_id());
-    gl::BindTexture(gl::TEXTURE_2D, rndr.grass_texture.handle.gl_id);
-  }
-  rndr.grass_buffers.draw(&mut rndr.gl);
+  let uniforms = set_sun(uniforms, &rndr.sun);
+  frame.draw(
+    rndr.grass_buffers,
+    NoIndices(PrimitiveType::TrianglesList),
+    &rndr.shaders.grass_billboard_shader,
+    &uniforms,
+    &params
+  );
 }
 
 #[allow(missing_docs)]
@@ -119,21 +107,40 @@ pub fn render(
   let terrain_uniforms = uniform! {
     __dummy: 0
   };
-  rndr.shaders.terrain_shader.shader.use_shader(&mut frame);
-  set_ambient_light(&mut rndr.shaders.terrain_shader.shader, &mut frame, &rndr.sun);
-  set_camera(&mut rndr.shaders.terrain_shader.shader, &mut frame, &rndr.camera);
+  let terrain_uniforms = set_ambient_light(terrain_uniforms, &rndr.sun);
+  let terrain_uniforms = set_camera(terrain_uniforms, &rndr.camera);
   let terrain_uniforms = set_clip(terrain_uniforms, rndr.near_clip, rndr.far_clip);
   let terrain_uniforms = set_eye_position(terrain_uniforms, &rndr.camera);
-  set_sun(&mut rndr.shaders.terrain_shader.shader, &mut frame, &rndr.sun);
-  rndr.terrain_buffers.draw(&mut frame);
+  let terrain_uniforms = set_sun(terrain_uniforms, &rndr.sun);
+  frame.draw(
+    rndr.terrain_buffers,
+    NoIndices(PrimitiveType::TrianglesList),
+    &rndr.shaders.terrain_shader,
+    &terrain_uniforms,
+    &params
+  );
 
-  rndr.shaders.mob_shader.use_shader(&mut frame);
-  set_camera(&mut rndr.shaders.mob_shader, &mut frame, &rndr.camera);
+  let player_uniforms = uniform! {
+    __dummy: 0
+  };
+  let player_uniforms = set_camera(player_uniforms, &rndr.camera);
   let terrain_uniforms = set_clip(terrain_uniforms, rndr.near_clip, rndr.far_clip);
-  rndr.mob_buffers.draw(&mut frame);
-  rndr.player_buffers.draw(&mut frame);
+  frame.draw(
+    rndr.mob_buffers,
+    NoIndices(PrimitiveType::TrianglesList),
+    &rndr.shaders.mob_shader,
+    &player_uniforms,
+    &params
+  );
+  frame.draw(
+    rndr.player_buffers,
+    NoIndices(PrimitiveType::TrianglesList),
+    &rndr.shaders.mob_shader,
+    &player_uniforms,
+    &params
+  );
 
-  draw_grass_billboards(rndr);
+  draw_grass_billboards(rndr, &params, frame);
 
   if rndr.show_hud {
     frame.draw(

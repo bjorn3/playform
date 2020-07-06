@@ -5,8 +5,7 @@ use gl::types::*;
 use cgmath;
 use cgmath::{Matrix3, Matrix4, One, Vector3, Point3, EuclideanSpace};
 use std::f32::consts::PI;
-use yaglw::gl_context::GLContext;
-use yaglw::shader::Shader;
+use glium::uniforms::{Uniforms, EmptyUniforms, UniformsStorage, AsUniformValue};
 
 /// T representation as 3 distinct matrices, as well as a position + two rotations.
 pub struct T {
@@ -97,13 +96,10 @@ impl T {
   }
 }
 
-/// Set a shader's projection matrix to match that of a camera.
-pub fn set_camera(shader: &mut Shader, gl: &mut GLContext, c: &T) {
-  let projection_matrix = shader.get_uniform_location("projection_matrix");
-  shader.use_shader(gl);
-  unsafe {
-    let val = c.projection_matrix();
-    let ptr = &val as *const _ as *const _;
-    gl::UniformMatrix4fv(projection_matrix, 1, 0, ptr);
-  }
+/// Set the projection matrix to match that of a camera.
+pub fn set_camera<'n, T: AsUniformValue, R: Uniforms>(
+  uniforms: UniformsStorage<'n, T, R>,
+  camera: &T,
+) -> UniformsStorage<'n, [[f32; 4]; 4], UniformsStorage<'n, T, R>>{
+  uniforms.set("projection_matrix", c.projection_matrix())
 }
